@@ -14,19 +14,18 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset, IterableDataset
 from transformers import PreTrainedTokenizerBase
-import tensorflow as tf
 
 from prismatic.models.backbones.llm.prompting import PromptBuilder
 from prismatic.models.backbones.vision import ImageTransform
 from prismatic.util.data_utils import tree_map
 from vla.action_tokenizer import ActionTokenizer
-from vla.datasets.rlds import make_interleaved_dataset, make_single_dataset, \
-    make_interleaved_episodic_dataset
+from vla.datasets.rlds import make_interleaved_dataset, make_interleaved_episodic_dataset, make_single_dataset
 from vla.datasets.rlds.oxe import OXE_NAMED_MIXTURES, get_oxe_dataset_kwargs_and_weights
 from vla.datasets.rlds.utils.data_utils import NormalizationType
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
+
 
 @dataclass
 class RLDSBatchTransform:
@@ -39,7 +38,7 @@ class RLDSBatchTransform:
     def __call__(self, rlds_batch: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a RLDS batch to the format expected by the OpenVLA collator/models."""
         # dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"][0]
-        
+
         # For future action predictions
         if rlds_batch["action"].shape[0] > 1:
             dataset_name, action = rlds_batch["dataset_name"], rlds_batch["action"]
@@ -76,22 +75,23 @@ class RLDSBatchTransform:
                 action_mask = torch.tensor(rlds_batch["action_mask"], dtype=torch.bool)
 
         # Mask prompt tokens
-        labels[: int(torch.where(input_ids==2)[0][0])] = IGNORE_INDEX
+        labels[: int(torch.where(input_ids == 2)[0][0])] = IGNORE_INDEX
 
         if not self.predict_stop_token:
             labels[-1] = IGNORE_INDEX
 
-        timesteps = rlds_batch['observation']['timestep']
+        timesteps = rlds_batch["observation"]["timestep"]
 
-        return dict(pixel_values=pixel_values,
-                    input_ids=input_ids,
-                    labels=labels,
-                    dataset_name=dataset_name,
-                    actions=action,
-                    action_masks=action_mask,
-                    timesteps=timesteps,
-                    episode_ids=None,
-                    )
+        return dict(
+            pixel_values=pixel_values,
+            input_ids=input_ids,
+            labels=labels,
+            dataset_name=dataset_name,
+            actions=action,
+            action_masks=action_mask,
+            timesteps=timesteps,
+            episode_ids=None,
+        )
 
 
 class RLDSDataset(IterableDataset):
@@ -266,9 +266,7 @@ class DummyDataset(Dataset):
 
 
 class GroupRLDSDataset(RLDSDataset):
-    def __init__(self, *args,
-                 group_size: int = 16,
-                 **kwargs):
+    def __init__(self, *args, group_size: int = 16, **kwargs):
         self.group_size = group_size
         super().__init__(*args, **kwargs)
 
@@ -306,9 +304,7 @@ class StreamRLDSDataset(RLDSDataset):
             episode_id += 1
             T = rlds_batch["action"].shape[0]
             for i in range(T):
-                frame = self.batch_transform(
-                    tree_map(lambda x: x[i], rlds_batch)
-                )
+                frame = self.batch_transform(tree_map(lambda x: x[i], rlds_batch))
                 frame["episode_ids"] = np.array([episode_id])
                 yield frame
 

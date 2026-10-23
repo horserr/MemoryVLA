@@ -1,18 +1,18 @@
-import os
 import argparse
+import os
 import sys
+from argparse import Namespace
+
 import numpy as np
 import tensorflow as tf
 import yaml
-from argparse import Namespace
 
 os.environ["DISPLAY"] = ""
 os.environ["VK_ICD_FILENAMES"] = "/usr/share/vulkan/icd.d/nvidia_icd.json"
 
-from simpler_env.evaluation.argparse import get_args
-
-from evaluation.simpler_env.maniskill2_evaluator import maniskill2_evaluator
 from evaluation.simpler_env import VLAInference
+from evaluation.simpler_env.maniskill2_evaluator import maniskill2_evaluator
+from simpler_env.evaluation.argparse import get_args
 
 
 def deep_update(base: dict, updates: dict):
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     finally:
         sys.argv = original_argv
 
-    with open(os.path.join(os.path.dirname(os.path.dirname(args.ckpt_path)), 'config.yaml'), 'r') as f:
+    with open(os.path.join(os.path.dirname(os.path.dirname(args.ckpt_path)), "config.yaml"), "r") as f:
         yaml_args = yaml.safe_load(f) or {}
 
     cli_args = vars(args)
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     exclude_keys = {"pretrained_checkpoint", "use_bf16"}
     filtered_args = {k: v for k, v in vars(args).items() if k not in exclude_keys}
 
-    args.logging_dir = os.path.join(os.path.dirname(os.path.dirname(args.ckpt_path)), 'eval_simpler')
+    args.logging_dir = os.path.join(os.path.dirname(os.path.dirname(args.ckpt_path)), "eval_simpler")
 
     # prevent a single jax process from taking up all the GPU memory
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     assert args.ckpt_path is not None
     model = VLAInference(
         saved_model_path=args.ckpt_path,
-        cfg_scale=1.5, # cfg from 1.5 to 7 also performs well
+        cfg_scale=1.5,  # cfg from 1.5 to 7 also performs well
         use_bf16=args.use_bf16,
         **filtered_args,
     )

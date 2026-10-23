@@ -6,16 +6,16 @@ exports individual functions for clear control flow.
 """
 
 from pathlib import Path
-from typing import Tuple, Type, Union
+from typing import Tuple, Type
 
-from transformers import PreTrainedTokenizerBase
 from torch.utils.data import Dataset
+from transformers import PreTrainedTokenizerBase
 
 from prismatic.models.backbones.llm.prompting import PromptBuilder
 from prismatic.models.backbones.vision import ImageTransform
 from prismatic.util.data_utils import PaddedCollatorForActionPrediction
-from vla.datasets import EpisodicRLDSDataset, RLDSBatchTransform, RLDSDataset, GroupRLDSDataset, StreamRLDSDataset
 from vla.action_tokenizer import ActionTokenizer
+from vla.datasets import GroupRLDSDataset, RLDSBatchTransform, RLDSDataset, StreamRLDSDataset
 
 
 def get_vla_dataset_and_collator(
@@ -47,7 +47,9 @@ def get_vla_dataset_and_collator(
     )
 
     collator = PaddedCollatorForActionPrediction(
-        tokenizer.model_max_length, tokenizer.pad_token_id, padding_side=padding_side,
+        tokenizer.model_max_length,
+        tokenizer.pad_token_id,
+        padding_side=padding_side,
     )
 
     # Build RLDS Iterable Dataset

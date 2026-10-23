@@ -5,7 +5,6 @@ import time
 import numpy as np
 import torch
 
-
 # Initialize important constants and pretty-printing mode in NumPy.
 ACTION_DIM = 7
 DATE = time.strftime("%Y_%m_%d")
@@ -30,6 +29,7 @@ def set_seed_everywhere(seed: int):
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
 
+
 def get_image_resize_size(cfg):
     """
     Gets image resize size for a model class.
@@ -41,7 +41,6 @@ def get_image_resize_size(cfg):
     else:
         raise ValueError("Unexpected `model_family` found in config.")
     return resize_size
-
 
 
 def normalize_gripper_action(action, binarize=True):

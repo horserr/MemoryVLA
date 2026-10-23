@@ -5,10 +5,10 @@ General utilities and classes for facilitating data loading and collation.
 """
 
 from dataclasses import dataclass
-from typing import Callable, Dict, Sequence, Tuple, List
+from typing import Callable, Dict, Sequence, Tuple
 
-import torch
 import numpy as np
+import torch
 from torch.nn.utils.rnn import pad_sequence
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
@@ -108,16 +108,12 @@ class PaddedCollatorForActionPrediction:
             dataset_names = None
 
         if "episode_ids" in instances[0]:
-            episode_ids = np.concatenate([
-                instance["episode_ids"] for instance in instances
-            ], axis=0)
+            episode_ids = np.concatenate([instance["episode_ids"] for instance in instances], axis=0)
         else:
             episode_ids = None
 
         if "timesteps" in instances[0]:
-            timesteps = np.concatenate([
-                instance["timesteps"] for instance in instances
-            ], axis=0)
+            timesteps = np.concatenate([instance["timesteps"] for instance in instances], axis=0)
         else:
             timesteps = None
 

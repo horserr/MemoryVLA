@@ -106,9 +106,9 @@ class PrismaticVLM(VLM):
 
         # Load from Checkpoint (Custom --> should load both *projector* and *llm* weights)
         model_state_dict = torch.load(pretrained_checkpoint, map_location="cpu")["model"]
-        assert (
-            "projector" in model_state_dict and "llm_backbone" in model_state_dict
-        ), "PrismaticVLM `from_pretrained` expects checkpoint with keys for `projector` AND `llm_backbone`!"
+        assert "projector" in model_state_dict and "llm_backbone" in model_state_dict, (
+            "PrismaticVLM `from_pretrained` expects checkpoint with keys for `projector` AND `llm_backbone`!"
+        )
 
         vlm.projector.load_state_dict(model_state_dict["projector"])
         vlm.llm_backbone.load_state_dict(model_state_dict["llm_backbone"])
@@ -308,7 +308,6 @@ class PrismaticVLM(VLM):
     # Note =>> We're not explicitly subclassing `PreTrainedModel` because we don't need the bloat; however, `forward()`
     #          *must* match the signature of a `{Model}ForCausalLM` so that we can inherit from `GenerationMixin`
 
-    # ruff: noqa: C901
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -390,7 +389,7 @@ class PrismaticVLM(VLM):
             )
 
         # Get Input Embeddings from LLM Backbone :: [bsz, input_seq_len, llm_embed_dim]
-        input_embeddings = self.llm_backbone.embed_input_ids(input_ids) # b,l,c
+        input_embeddings = self.llm_backbone.embed_input_ids(input_ids)  # b,l,c
 
         # Build Multimodal Embeddings (and build resulting attention mask)
         multimodal_embeddings = torch.cat(
@@ -475,17 +474,17 @@ class PrismaticVLM(VLM):
 
         # Run LLM Forward --> returns CausalLMOutputWithPast!
         llm_output = self.llm_backbone(
-                input_ids=None,
-                attention_mask=fused_attention_mask,
-                position_ids=None,
-                past_key_values=past_key_values,
-                inputs_embeds=fused_embeddings,
-                labels=fused_labels,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
+            input_ids=None,
+            attention_mask=fused_attention_mask,
+            position_ids=None,
+            past_key_values=past_key_values,
+            inputs_embeds=fused_embeddings,
+            labels=fused_labels,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
 
         return llm_output
 

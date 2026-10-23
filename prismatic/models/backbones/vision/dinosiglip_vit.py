@@ -116,9 +116,9 @@ class DinoSigLIPViTBackbone(VisionBackbone):
         elif self.image_resize_strategy == "letterbox":
             assert isinstance(default_dino_transform, Compose), "Unexpected `default_dino_transform`!"
             assert isinstance(default_siglip_transform, Compose), "Unexpected `default_siglip_transform`!"
-            assert (
-                "mean" in self.dino_data_cfg and "mean" in self.siglip_data_cfg
-            ), "DinoSigLIP `data_cfg` missing `mean`!"
+            assert "mean" in self.dino_data_cfg and "mean" in self.siglip_data_cfg, (
+                "DinoSigLIP `data_cfg` missing `mean`!"
+            )
 
             # Compute Padding Fill Value(s) (rescaled normalization mean if applicable)
             dino_fill = tuple([int(x * 255) for x in self.dino_data_cfg["mean"]])

@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 from typing import List, Optional, Union
+
 from huggingface_hub import HfFileSystem, hf_hub_download
 
 from prismatic.conf import ModelConfig
@@ -9,7 +10,6 @@ from prismatic.models.materialize import get_llm_backbone_and_tokenizer, get_vis
 from prismatic.models.registry import GLOBAL_REGISTRY, MODEL_REGISTRY
 from prismatic.models.vlms import PrismaticVLM
 from prismatic.overwatch import initialize_overwatch
-
 from vla import MemoryVLA
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
@@ -18,6 +18,7 @@ overwatch = initialize_overwatch(__name__)
 
 # === HF Hub Repository ===
 HF_HUB_REPO = "TRI-ML/prismatic-vlms"
+
 
 # === Available Models ===
 def available_models() -> List[str]:
@@ -107,6 +108,7 @@ def load(
 
     return vlm
 
+
 # === Load Pretrained VLA Model ===
 def load_vla(
     model_id_or_path: Union[str, Path],
@@ -147,9 +149,7 @@ def load_vla(
         overwatch.info(f"Downloading Model `{model_id_or_path}` Config & Checkpoint `{target_ckpt}`")
         with overwatch.local_zero_first():
             # relpath = Path(model_type) / model_id_or_path
-            config_json = hf_hub_download(
-                repo_id=model_id_or_path, filename=f"{('config.json')!s}", cache_dir=cache_dir
-            )
+            config_json = hf_hub_download(repo_id=model_id_or_path, filename=f"{('config.json')!s}", cache_dir=cache_dir)
             dataset_statistics_json = hf_hub_download(
                 repo_id=model_id_or_path, filename=f"{('dataset_statistics.json')!s}", cache_dir=cache_dir
             )

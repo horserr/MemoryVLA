@@ -1,6 +1,7 @@
 import os
 import re
 
+
 def extract_success_rates(log_path: str):
     """
     Extract all success rates from a log file.
@@ -43,10 +44,7 @@ def process_root(root: str, dir_flag: str):
     data = {}
     notes = []
 
-    subfolders = sorted(
-        d for d in os.listdir(eval_dir)
-        if os.path.isdir(os.path.join(eval_dir, d))
-    )
+    subfolders = sorted(d for d in os.listdir(eval_dir) if os.path.isdir(os.path.join(eval_dir, d)))
 
     for name in subfolders:
         name_label = name  # directly use the folder name
@@ -95,12 +93,12 @@ def process_root(root: str, dir_flag: str):
         print("\n**Mismatched counts:**")
         for name_label, fname, expected, actual, rates in notes:
             short = file_configs[fname][0]
-            avg_str = f"{sum(rates)/actual:5.1f}" if actual else "-"
+            avg_str = f"{sum(rates) / actual:5.1f}" if actual else "-"
             print(f"- `{name_label}` → `{fname}` ({short}) expected {expected}, found {actual}, avg={avg_str}")
     print("\n" + "=" * 80 + "\n")
 
 
-def process_multiple_roots(root_paths, dir_flag='eval_simpler'):
+def process_multiple_roots(root_paths, dir_flag="eval_simpler"):
     """
     Process multiple root directories and print aggregated tables for each.
     """
@@ -109,7 +107,7 @@ def process_multiple_roots(root_paths, dir_flag='eval_simpler'):
 
 
 if __name__ == "__main__":
-    dir_flag = 'eval_simpler'
+    dir_flag = "eval_simpler"
     root_paths = [
         # Add your log root directories here
         # such as: ./log/fractal/memvla_fractal--image_aug

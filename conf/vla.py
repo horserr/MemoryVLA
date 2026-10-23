@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum, unique
 from pathlib import Path
 from typing import Optional, Union
+
 from draccus import ChoiceRegistry
 
 
@@ -93,6 +94,7 @@ class Exp_CogACT_OXE_Magic_Soup_Plus_Minus(Exp_SigLIP_224px_Bridge):
     learning_rate: float = 2e-5
 
     epochs: int = 100
+
 
 # === Define a VLA Registry Enum for Reference & Validation ===
 @unique

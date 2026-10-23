@@ -1,21 +1,22 @@
+import os
 from collections import deque
 from typing import Optional, Sequence
-import os
-from PIL import Image
+
 import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
-
 import torch
+from PIL import Image
 from transforms3d.euler import euler2axangle
 
-from vla import load_vla
 from evaluation.simpler_env.adaptive_ensemble import AdaptiveEnsembler
+from vla import load_vla
+
 
 class VLAInference:
     def __init__(
         self,
-        saved_model_path: str = '',
+        saved_model_path: str = "",
         unnorm_key: Optional[str] = None,
         policy_setup: str = "widowx_bridge",
         horizon: int = 0,
@@ -29,8 +30,8 @@ class VLAInference:
         use_ddim: bool = True,
         num_ddim_steps: int = 10,
         use_bf16: bool = False,
-        action_ensemble = True,
-        adaptive_ensemble_alpha = 0.1,
+        action_ensemble=True,
+        adaptive_ensemble_alpha=0.1,
         **kwargs,
     ) -> None:
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -61,13 +62,13 @@ class VLAInference:
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
         self.vla = load_vla(
-          saved_model_path,
-          load_for_training=False, 
-          action_model_type=action_model_type,
-          future_action_window_size=future_action_window_size,
-          action_dim=action_dim,
-          use_bf16=use_bf16,
-          **kwargs,
+            saved_model_path,
+            load_for_training=False,
+            action_model_type=action_model_type,
+            future_action_window_size=future_action_window_size,
+            action_dim=action_dim,
+            use_bf16=use_bf16,
+            **kwargs,
         )
 
         dtype = torch.bfloat16 if use_bf16 else torch.float32
@@ -115,10 +116,12 @@ class VLAInference:
         self.previous_gripper_action = None
 
     def step(
-        self, image: np.ndarray,
-            task_description: Optional[str] = None,
-            episode_first_frame: str = 'False',
-            *args, **kwargs
+        self,
+        image: np.ndarray,
+        task_description: Optional[str] = None,
+        episode_first_frame: str = "False",
+        *args,
+        **kwargs,
     ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         """
         Input:
@@ -148,7 +151,7 @@ class VLAInference:
             use_ddim=self.use_ddim,
             num_ddim_steps=self.num_ddim_steps,
             episode_first_frame=episode_first_frame,
-            )
+        )
 
         # binarize the gripper action
         raw_actions[:, 6] = np.clip(raw_actions[:, 6], -1, 1)
@@ -201,7 +204,7 @@ class VLAInference:
 
         elif self.policy_setup == "widowx_bridge":
             action["gripper"] = 2.0 * (raw_action["open_gripper"] > 0.5) - 1.0
-        
+
         action["terminate_episode"] = np.array([0.0])
         return raw_action, action
 

@@ -4,22 +4,18 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Tuple, Union
-import yaml
-import draccus
 
+import draccus
 import torch
 import torch.distributed as dist
+import yaml
 
+from conf.vla import VLAConfig, VLARegistry
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util import set_global_seed
-
 from training import VLAMetrics, get_train_strategy
-from conf.vla import VLAConfig, VLARegistry
-from vla import load, load_vla
-from vla import MemoryVLA
-from vla import get_vla_dataset_and_collator
+from vla import MemoryVLA, get_vla_dataset_and_collator, load, load_vla
 from vla.datasets.rlds.utils.data_utils import save_dataset_statistics
-
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -136,7 +132,7 @@ def train(cfg: TrainConfig) -> None:
         with open(run_dir / "config.yaml", "r") as f_yaml, open(run_dir / "config.json", "w") as f_json:
             yaml_cfg = yaml.safe_load(f_yaml)
             json.dump(yaml_cfg, f_json, indent=2)
-    
+
     dist.barrier()
     # Load VLA checkpoint (if resuming from training) or Base VLM otherwise (from `cfg.vla.base_vlm` ID or Path)
     #   =>> Note :: Verifies that all parameters are loaded in FP32 on load!
@@ -225,7 +221,7 @@ def train(cfg: TrainConfig) -> None:
     # Save dataset statistics for de-normalization at inference time
     if overwatch.is_rank_zero():
         save_dataset_statistics(vla_dataset.dataset_statistics, run_dir)
-    
+
     dist.barrier()
     # Create Train Strategy
     overwatch.info(f"Initializing Train Strategy `{cfg.train_strategy}`")

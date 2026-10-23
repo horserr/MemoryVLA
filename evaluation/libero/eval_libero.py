@@ -1,15 +1,16 @@
 import os
 from dataclasses import dataclass
 from typing import List, Union
+
 import draccus
 import numpy as np
 import tqdm
 
-os.environ['MUJOCO_GL'] = 'osmesa'
+os.environ["MUJOCO_GL"] = "osmesa"
 # apt install -y libosmesa6-dev libgl1-mesa-dev libglu1-mesa-dev
 
-from libero.libero import benchmark
-
+# let tensorflow only see CPU
+import tensorflow as tf
 from libero_utils import (
     get_libero_env,
     get_libero_image,
@@ -18,9 +19,9 @@ from libero_utils import (
 )
 from robot_utils import DATE_TIME, set_seed_everywhere
 
-# let tensorflow only see CPU
-import tensorflow as tf
-tf.config.set_visible_devices([], 'GPU')
+from libero.libero import benchmark
+
+tf.config.set_visible_devices([], "GPU")
 
 
 @dataclass
@@ -61,12 +62,13 @@ def eval_libero(cfg: GenerateConfig) -> None:
     log_file.write(f"Task suite: {cfg.task_suite_name}\n")
 
     # Get expected image dimensions
-    resize_size = cfg.resolution # TODO need to be done in the cfg
+    resize_size = cfg.resolution  # TODO need to be done in the cfg
 
     ################################################################
     ### import Policy
     from vla_policy import LLaVAClient
-    policy = LLaVAClient(base_url=f'http://localhost:{cfg.port}')
+
+    policy = LLaVAClient(base_url=f"http://localhost:{cfg.port}")
     ################################################################
 
     # Start evaluation
@@ -95,7 +97,7 @@ def eval_libero(cfg: GenerateConfig) -> None:
             # Reset environment
             env.reset()
             policy.reset()
-            episode_first_frame = 'True'
+            episode_first_frame = "True"
 
             # Set initial states
             obs = env.set_init_state(initial_states[episode_idx])
@@ -114,8 +116,8 @@ def eval_libero(cfg: GenerateConfig) -> None:
             elif cfg.task_suite_name == "libero_90":
                 max_steps = 400  # longest training demo has 373 steps
 
-            print(f"Starting episode {task_episodes+1}...")
-            log_file.write(f"Starting episode {task_episodes+1}...\n")
+            print(f"Starting episode {task_episodes + 1}...")
+            log_file.write(f"Starting episode {task_episodes + 1}...\n")
             while t < max_steps + cfg.num_steps_wait:
                 try:
                     # IMPORTANT: Do nothing for the first few timesteps because the simulator drops objects
@@ -142,19 +144,19 @@ def eval_libero(cfg: GenerateConfig) -> None:
                     ###############################################################################
                     ### here we need to use flask to get the action from the model
                     ### we need a policy to get the action
-                    action = policy.process_frame(text=task_description,
-                                                  episode_first_frame=episode_first_frame,
-                                                  **observation)
+                    action = policy.process_frame(
+                        text=task_description, episode_first_frame=episode_first_frame, **observation
+                    )
 
-                    if ';' in action:
-                        action = action.replace(';', ' ')
+                    if ";" in action:
+                        action = action.replace(";", " ")
 
                     # str to np array
-                    action = action.split(' ')
+                    action = action.split(" ")
                     action = [float(x) for x in action]
                     action = np.array(action, dtype=float)
 
-                    episode_first_frame = 'False'
+                    episode_first_frame = "False"
                     action_dim = 7
 
                     # Adjust gripper action values according to your data's gripper definition
@@ -168,7 +170,7 @@ def eval_libero(cfg: GenerateConfig) -> None:
                     done_flag = False
                     chunk_size = len(action) // action_dim
                     for i in range(chunk_size):
-                        action_chunk = action[i * action_dim:(i + 1) * action_dim]
+                        action_chunk = action[i * action_dim : (i + 1) * action_dim]
 
                         # Execute action in environment
                         obs, reward, done, info = env.step(action_chunk)
@@ -193,8 +195,10 @@ def eval_libero(cfg: GenerateConfig) -> None:
             # Save a replay video of the episode
             rollout_dir = os.path.join(cfg.local_log_dir, run_id + "_videos")
             save_rollout_video(
-                replay_images, total_episodes,
-                success=done, task_description=task_description,
+                replay_images,
+                total_episodes,
+                success=done,
+                task_description=task_description,
                 log_file=log_file,
                 rollout_dir=rollout_dir,
             )
@@ -216,6 +220,7 @@ def eval_libero(cfg: GenerateConfig) -> None:
         log_file.flush()
 
     log_file.close()
+
 
 if __name__ == "__main__":
     eval_libero()

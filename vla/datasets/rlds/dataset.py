@@ -34,6 +34,7 @@ overwatch = initialize_overwatch(__name__)
 # Configure Tensorflow with *no GPU devices* (to prevent clobber with PyTorch)
 tf.config.set_visible_devices([], "GPU")
 
+
 # ruff: noqa: B006
 def make_dataset_from_rlds(
     name: str,
@@ -135,7 +136,7 @@ def make_dataset_from_rlds(
 
         if not all(k in traj for k in REQUIRED_KEYS):
             raise ValueError(
-                f"Trajectory is missing keys: {REQUIRED_KEYS - set(traj.keys())}. " "Did you write a `standardize_fn`?"
+                f"Trajectory is missing keys: {REQUIRED_KEYS - set(traj.keys())}. Did you write a `standardize_fn`?"
             )
 
         # extracts images, depth images and proprio from the "observation" dict
@@ -175,7 +176,7 @@ def make_dataset_from_rlds(
         if language_key is not None:
             if traj[language_key].dtype != tf.string:
                 raise ValueError(
-                    f"Language key {language_key} has dtype {traj[language_key].dtype}, " "but it must be tf.string."
+                    f"Language key {language_key} has dtype {traj[language_key].dtype}, but it must be tf.string."
                 )
             task["language_instruction"] = traj.pop(language_key)
 
@@ -342,7 +343,7 @@ def apply_trajectory_transforms(
             traj_transforms.chunk_act_obs,
             window_size=window_size,
             future_action_window_size=future_action_window_size,
-            dataset_statistics = dataset_statistics,
+            dataset_statistics=dataset_statistics,
         ),
         num_parallel_calls,
     )
@@ -657,9 +658,7 @@ def make_interleaved_episodic_dataset(
         if "dataset_frame_transform_kwargs" in data_kwargs:
             data_kwargs.pop("dataset_frame_transform_kwargs")
         _, dataset_statistics = make_dataset_from_rlds(
-            **data_kwargs,
-            train=train,
-            load_all_data_for_training=load_all_data_for_training
+            **data_kwargs, train=train, load_all_data_for_training=load_all_data_for_training
         )
         dataset_sizes.append(dataset_statistics["num_transitions"])
         all_dataset_statistics[dataset_kwargs["name"]] = dataset_statistics
@@ -711,9 +710,10 @@ def make_interleaved_episodic_dataset(
             num_parallel_calls=threads,
             dataset_statistics=all_dataset_statistics[dataset_kwargs["name"]],
             train=train,
-        ) # delete flatten
+        )  # delete flatten
 
         if use_optim_group_sample:
+
             def group_sample(traj):
                 T = tf.shape(traj["action"])[0]
 
@@ -728,10 +728,7 @@ def make_interleaved_episodic_dataset(
                     return tf.sort(shuffled[:group_size])
 
                 indices = tf.cond(T < group_size, pad_case, sample_case)
-                return tf.nest.map_structure(
-                    lambda tensor: tf.gather(tensor, indices, axis=0),
-                    traj
-                )
+                return tf.nest.map_structure(lambda tensor: tf.gather(tensor, indices, axis=0), traj)
 
             dataset = dataset.map(
                 lambda traj: group_sample(traj),

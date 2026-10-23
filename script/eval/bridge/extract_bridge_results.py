@@ -1,8 +1,9 @@
+import glob
 import os
 import re
-import glob
 
-def extract_and_print_success(root_paths, dir_flag='eval', print_style='text'):
+
+def extract_and_print_success(root_paths, dir_flag="eval", print_style="text"):
     pattern = re.compile(r"Average success:?[ ]*([0-9]*\.?[0-9]+)")
     task_map = {
         "Carrot": "Carrot",
@@ -13,7 +14,7 @@ def extract_and_print_success(root_paths, dir_flag='eval', print_style='text'):
 
     headers = ["name", "AVG"] + list(task_map.values())
     header_fmt = "{:>24s}  {:>6s}  {:>6s}  {:>8s}  {:>6s}  {:>6s}"
-    row_fmt    = "{name:>24s}  {AVG:>6s}  {Carrot:>6s}  {Eggplant:>8s}  {Spoon:>6s}  {Cube:>6s}"
+    row_fmt = "{name:>24s}  {AVG:>6s}  {Carrot:>6s}  {Eggplant:>8s}  {Spoon:>6s}  {Cube:>6s}"
 
     for root in root_paths:
         eval_dir = os.path.join(root, dir_flag)
@@ -21,10 +22,7 @@ def extract_and_print_success(root_paths, dir_flag='eval', print_style='text'):
 
         # Parse every subfolder under eval_dir as one evaluation run
         if os.path.isdir(eval_dir):
-            subdirs = sorted(
-                d for d in os.listdir(eval_dir)
-                if os.path.isdir(os.path.join(eval_dir, d))
-            )
+            subdirs = sorted(d for d in os.listdir(eval_dir) if os.path.isdir(os.path.join(eval_dir, d)))
             for sub in subdirs:
                 run_name = sub  # e.g., "memvla-bridge.pt" or "step-020000-epoch-03-..."
                 run_path = os.path.join(eval_dir, sub)
@@ -63,14 +61,14 @@ def extract_and_print_success(root_paths, dir_flag='eval', print_style='text'):
             continue
 
         # Output
-        if print_style == 'text':
+        if print_style == "text":
             print("=" * 60)
             print(title)
             print(header_fmt.format(*headers))
             for rec in records:
                 print(row_fmt.format(**rec))
             print()
-        elif print_style == 'md':
+        elif print_style == "md":
             print(f"**{title}**\n")
             print("| " + " | ".join(headers) + " |")
             print("| " + " | ".join("---" for _ in headers) + " |")
@@ -93,9 +91,9 @@ def extract_and_print_success(root_paths, dir_flag='eval', print_style='text'):
 
 
 if __name__ == "__main__":
-    dir_flag = 'eval_simpler'
+    dir_flag = "eval_simpler"
     roots = [
         # Add your log root directories here
         # such as: ./log/bridge/memvla_bridge--image_aug
     ]
-    extract_and_print_success(roots, dir_flag=dir_flag, print_style='md')
+    extract_and_print_success(roots, dir_flag=dir_flag, print_style="md")

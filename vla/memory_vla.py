@@ -1,27 +1,26 @@
 from __future__ import annotations
 
+import math
+from copy import deepcopy
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Type, Union, Tuple
-from copy import deepcopy
-import math
-import numpy as np
-from PIL import Image
+from typing import Callable, Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributed.fsdp.wrap import _module_wrap_policy, _or_policy
 import torch.nn.functional as F
+from PIL import Image
+from torch.distributed.fsdp.wrap import _module_wrap_policy, _or_policy
 from transformers import LlamaTokenizerFast
 
+from action_model.action_model import ActionModel
+from action_model.models import DiT
 from prismatic.models.backbones.llm import LLMBackbone
 from prismatic.models.backbones.vision import VisionBackbone
 from prismatic.models.vlms.prismatic import PrismaticVLM
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProjector
-
-from action_model.action_model import ActionModel
-from action_model.models import DiT
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -31,6 +30,7 @@ class TimestepEmbedder(nn.Module):
     """
     Embeds scalar timesteps into vector representations.
     """
+
     def __init__(self, hidden_size, frequency_embedding_size=256):
         super().__init__()
         self.mlp = nn.Sequential(
@@ -52,9 +52,9 @@ class TimestepEmbedder(nn.Module):
         """
         # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
         half = dim // 2
-        freqs = torch.exp(
-            -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
-        ).to(t.device)
+        freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
+            t.device
+        )
         args = t[:, None].float() * freqs[None]
         embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if dim % 2:
@@ -78,17 +78,16 @@ class CrossTransformerBlock(nn.Module):
 
         # Feed‑Forward Network
         self.ffn = nn.Sequential(
-            nn.Linear(feature_dim, feature_dim * 4),
-            nn.GELU(),
-            nn.Linear(feature_dim * 4, feature_dim)
+            nn.Linear(feature_dim, feature_dim * 4), nn.GELU(), nn.Linear(feature_dim * 4, feature_dim)
         )
         self.ffn_norm = nn.LayerNorm(feature_dim)
 
-    def forward(self,
-                query: torch.Tensor, # (B, N, D)
-                k: torch.Tensor, # (B, M, D)
-                v: torch.Tensor, # (B, M, D)
-                ) -> torch.Tensor:
+    def forward(
+        self,
+        query: torch.Tensor,  # (B, N, D)
+        k: torch.Tensor,  # (B, M, D)
+        v: torch.Tensor,  # (B, M, D)
+    ) -> torch.Tensor:
         q = self.q_proj(query)
         k = self.k_proj(k)
         v = self.v_proj(v)
@@ -114,10 +113,10 @@ class BottleneckSE(nn.Module):
 
         self.excite = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(C_mid, C_mid//16, 1),
+            nn.Conv2d(C_mid, C_mid // 16, 1),
             nn.ReLU(),
-            nn.Conv2d(C_mid//16, C_mid, 1),
-            nn.Sigmoid()
+            nn.Conv2d(C_mid // 16, C_mid, 1),
+            nn.Sigmoid(),
         )
 
         self.expand = nn.Conv2d(C_mid, C_out, 1, bias=False)
@@ -144,33 +143,29 @@ class GateFusion(nn.Module):
         nn.init.normal_(self.proj.bias, mean=0.0, std=1e-3)
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-        scale = torch.sigmoid(
-            self.proj(
-                torch.cat([x1, x2],
-                dim=-1)
-            )
-        )
+        scale = torch.sigmoid(self.proj(torch.cat([x1, x2], dim=-1)))
 
         fused = scale * x1 + (1 - scale) * x2
         return fused
 
 
 class CogMemBank(nn.Module):
-    def __init__(self,
-                 dataloader_type: str,
-                 group_size: int,
-                 token_size: int,
-                 mem_length: int = 16,
-                 retrieval_layers: int = 2,
-                 use_timestep_pe: bool = True,
-                 fusion_type: str = 'gate',
-                 consolidate_type: str = 'tome',
-                 update_fused: bool = False,
-                 ):
+    def __init__(
+        self,
+        dataloader_type: str,
+        group_size: int,
+        token_size: int,
+        mem_length: int = 16,
+        retrieval_layers: int = 2,
+        use_timestep_pe: bool = True,
+        fusion_type: str = "gate",
+        consolidate_type: str = "tome",
+        update_fused: bool = False,
+    ):
         super().__init__()
-        assert dataloader_type in ('stream', 'group')
-        assert fusion_type in ('gate', 'add')
-        assert consolidate_type in ('fifo', 'tome')
+        assert dataloader_type in ("stream", "group")
+        assert fusion_type in ("gate", "add")
+        assert consolidate_type in ("fifo", "tome")
 
         self.dataloader_type = dataloader_type
         self.group_size = group_size
@@ -182,18 +177,15 @@ class CogMemBank(nn.Module):
         self.consolidate_type = consolidate_type
         self.update_fused = update_fused
 
-        self.retrieval_blocks = nn.ModuleList([
-            CrossTransformerBlock(self.token_size)
-            for _ in range(self.retrieval_layers)
-        ])
+        self.retrieval_blocks = nn.ModuleList(
+            [CrossTransformerBlock(self.token_size) for _ in range(self.retrieval_layers)]
+        )
 
-        if self.fusion_type == 'gate':
+        if self.fusion_type == "gate":
             self.gate_fusion_blocks = GateFusion(self.token_size)
 
         if self.use_timestep_pe:
-            self.timestep_encoder = TimestepEmbedder(
-                self.token_size,
-                frequency_embedding_size=self.token_size // 4)
+            self.timestep_encoder = TimestepEmbedder(self.token_size, frequency_embedding_size=self.token_size // 4)
         else:
             self.timestep_encoder = None
 
@@ -219,7 +211,7 @@ class CogMemBank(nn.Module):
         sims = []
         for i in range(T - 1):
             f1 = feats[i].flatten(1) if feats[i].dim() > 1 else feats[i].unsqueeze(0)
-            f2 = feats[i+1].flatten(1) if feats[i+1].dim() > 1 else feats[i+1].unsqueeze(0)
+            f2 = feats[i + 1].flatten(1) if feats[i + 1].dim() > 1 else feats[i + 1].unsqueeze(0)
             sims.append(F.cosine_similarity(f1, f2, dim=1).mean().item())
 
         idx_max = int(torch.tensor(sims).argmax().item())
@@ -232,19 +224,15 @@ class CogMemBank(nn.Module):
         bank.pop(idx_max + 1)
 
     @torch.no_grad()
-    def _memory_consolidate(
-            self,
-            episode_id,
-            feat: torch.Tensor,
-            timestep: Optional[torch.Tensor]):
+    def _memory_consolidate(self, episode_id, feat: torch.Tensor, timestep: Optional[torch.Tensor]):
         if episode_id not in self.bank:
             self.bank[episode_id] = []
 
         self.bank[episode_id].append((timestep, feat.detach().clone()))
 
         while len(self.bank[episode_id]) > self.mem_length:
-            if self.consolidate_type == 'fifo':
-                self.bank[episode_id] = self.bank[episode_id][-self.mem_length:]
+            if self.consolidate_type == "fifo":
+                self.bank[episode_id] = self.bank[episode_id][-self.mem_length :]
             elif self.consolidate_type == "tome":
                 self._consolidate_with_token_merge(episode_id)
             else:
@@ -252,7 +240,7 @@ class CogMemBank(nn.Module):
 
     def process_batch(
         self,
-        tokens: torch.Tensor, # [B, N, D_role]
+        tokens: torch.Tensor,  # [B, N, D_role]
         episode_ids: np.array,
         timesteps: np.array,
     ) -> torch.Tensor:
@@ -265,10 +253,10 @@ class CogMemBank(nn.Module):
         outputs = []
 
         if self.training:
-            if self.dataloader_type == 'group':
+            if self.dataloader_type == "group":
                 self.bank.clear()
                 self.eid_stream = None
-            elif self.dataloader_type == 'stream':
+            elif self.dataloader_type == "stream":
                 first_eid = episode_ids[0]
                 if self.eid_stream is not None and self.eid_stream != first_eid:
                     self.clear_episode(self.eid_stream)
@@ -278,11 +266,11 @@ class CogMemBank(nn.Module):
             # 1) episode management
             eid = episode_ids[i]
             if self.training:
-                if self.dataloader_type == 'group':
+                if self.dataloader_type == "group":
                     if i > 0 and i % self.group_size == 0:
                         prev_group_eid = episode_ids[i - self.group_size]
                         self.clear_episode(prev_group_eid)
-                if self.dataloader_type == 'stream':
+                if self.dataloader_type == "stream":
                     if i > 0 and episode_ids[i] != episode_ids[i - 1]:
                         self.clear_episode(episode_ids[i - 1])
                         self.eid_stream = episode_ids[i]
@@ -299,7 +287,7 @@ class CogMemBank(nn.Module):
                     hist_timesteps = [t for t, _ in hist]
                     hist_timesteps = torch.tensor(hist_timesteps).to(working_mem.device)
                     pe = self.timestep_encoder(hist_timesteps).unsqueeze(0)  # (1, T, D)
-                    pe = pe.repeat_interleave(N, dim=1) # (1, T*N, D)
+                    pe = pe.repeat_interleave(N, dim=1)  # (1, T*N, D)
                 else:
                     pe = torch.zeros_like(episode_mem)
 
@@ -314,9 +302,9 @@ class CogMemBank(nn.Module):
                 retrieved_episode_mem = working_mem  # (1, N, D)
 
             # 3) memory adaptive fusion
-            if self.fusion_type == 'add':
+            if self.fusion_type == "add":
                 fused_feats = (working_mem + retrieved_episode_mem) * 0.5
-            elif self.fusion_type == 'gate':
+            elif self.fusion_type == "gate":
                 fused_feats = self.gate_fusion_blocks(working_mem, retrieved_episode_mem)
 
             outputs.append(fused_feats)
@@ -333,17 +321,18 @@ class CogMemBank(nn.Module):
 
 
 class PerMemBank(CogMemBank):
-    def __init__(self,
-                 dataloader_type: str,
-                 group_size: int,
-                 token_size: int,
-                 mem_length: int = 16,
-                 retrieval_layers: int = 2,
-                 use_timestep_pe: bool = True,
-                 fusion_type: str = 'gate',
-                 consolidate_type: str = 'tome',
-                 update_fused: bool = False,
-                 ):
+    def __init__(
+        self,
+        dataloader_type: str,
+        group_size: int,
+        token_size: int,
+        mem_length: int = 16,
+        retrieval_layers: int = 2,
+        use_timestep_pe: bool = True,
+        fusion_type: str = "gate",
+        consolidate_type: str = "tome",
+        update_fused: bool = False,
+    ):
         super().__init__(
             dataloader_type=dataloader_type,
             group_size=group_size,
@@ -361,7 +350,7 @@ class MemoryVLA(nn.Module):
     def __init__(
         self,
         vlm: PrismaticVLM,
-        action_model_type: str = 'DiT-L',
+        action_model_type: str = "DiT-L",
         token_size: int = 4096,
         action_dim: int = 7,
         future_action_window_size: int = 15,
@@ -373,8 +362,8 @@ class MemoryVLA(nn.Module):
         mem_length: int = 16,
         retrieval_layers: int = 2,
         use_timestep_pe: bool = True,
-        fusion_type: str = 'gate',
-        consolidate_type: str = 'tome',
+        fusion_type: str = "gate",
+        consolidate_type: str = "tome",
         update_fused: bool = False,
         **kwargs,
     ) -> None:
@@ -399,9 +388,10 @@ class MemoryVLA(nn.Module):
 
         self.cur_timestep = 0
 
-        self.vision_dim = self.vlm.vision_backbone.dino_featurizer.patch_embed.proj.weight.shape[0] + \
-                 self.vlm.vision_backbone.siglip_featurizer.patch_embed.proj.weight.shape[0]
-
+        self.vision_dim = (
+            self.vlm.vision_backbone.dino_featurizer.patch_embed.proj.weight.shape[0]
+            + self.vlm.vision_backbone.siglip_featurizer.patch_embed.proj.weight.shape[0]
+        )
 
         self.per_compr = BottleneckSE(
             C_in=self.vision_dim,
@@ -448,7 +438,7 @@ class MemoryVLA(nn.Module):
         if self.use_ema:
             self.ema_diffusion = deepcopy(self.action_model)
             self.ema_diffusion.requires_grad_(False)
-            self.all_module_keys.append('ema_diffusion')
+            self.all_module_keys.append("ema_diffusion")
 
         for module_keys in self.vlm.all_module_keys:
             self.all_module_keys.append("vlm." + module_keys)
@@ -465,21 +455,21 @@ class MemoryVLA(nn.Module):
             keys.append("vlm." + module_keys)
         keys += self._trainable_module_keys
         return keys
-    
+
     @property
     def llm_backbone(self) -> LLMBackbone:
         return self.vlm.llm_backbone
-    
+
     @property
     def vision_backbone(self) -> VisionBackbone:
         return self.vlm.vision_backbone
-    
+
     def freeze_backbones(self, stage):
         self.vlm.freeze_backbones(stage)
 
     def forward(
         self,
-        input_ids: torch.LongTensor=None,
+        input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -513,22 +503,24 @@ class MemoryVLA(nn.Module):
         # extract the visual token number
         if self.vlm.vision_backbone.featurizer is not None:
             num_patch = self.vlm.vision_backbone.featurizer.patch_embed.num_patches
-        elif hasattr(self.vlm.vision_backbone, 'siglip_featurizer') and self.vlm.vision_backbone.siglip_featurizer is not None:
+        elif (
+            hasattr(self.vlm.vision_backbone, "siglip_featurizer")
+            and self.vlm.vision_backbone.siglip_featurizer is not None
+        ):
             num_patch = self.vlm.vision_backbone.siglip_featurizer.patch_embed.num_patches
         else:
             raise ValueError("No vision backbone found")
 
         # extract the last hidden state and the learnable EOS token feature
         last_hidden_state = output.hidden_states[-1]
-        last_hidden_state = last_hidden_state[:, num_patch :]
+        last_hidden_state = last_hidden_state[:, num_patch:]
 
         # extract the cognition feature
         cumulative_sum = attention_mask.cumsum(dim=1)
-        last_true_indices = (cumulative_sum == cumulative_sum.max(dim=1, keepdim=True)[0]).float().argmax(dim=1)  
+        last_true_indices = (cumulative_sum == cumulative_sum.max(dim=1, keepdim=True)[0]).float().argmax(dim=1)
         expanded_indices = last_true_indices.unsqueeze(-1).expand(-1, last_hidden_state.size(-1))
 
-        cog_tokens = last_hidden_state.gather(
-            1, expanded_indices.unsqueeze(1))  # [B, 1, D]
+        cog_tokens = last_hidden_state.gather(1, expanded_indices.unsqueeze(1))  # [B, 1, D]
 
         vision_feats = self.vlm.vision_feats
         per_tokens = self.per_compr(vision_feats)
@@ -546,14 +538,12 @@ class MemoryVLA(nn.Module):
         )
 
         # Repeat 'actions' 'repeated_diffusion_steps' times, resulting in [repeated_diffusion_steps*B, T, D]
-        actions_future = actions[:, -(self.future_action_window_size+1):, :]
+        actions_future = actions[:, -(self.future_action_window_size + 1) :, :]
         actions_repeated = actions_future.repeat(repeated_diffusion_steps, 1, 1)
 
-        cog_tokens_repeated = cog_tokens.repeat(
-            repeated_diffusion_steps, 1, 1)
+        cog_tokens_repeated = cog_tokens.repeat(repeated_diffusion_steps, 1, 1)
 
-        per_tokens_repeated = per_tokens.repeat(
-            repeated_diffusion_steps, 1, 1)
+        per_tokens_repeated = per_tokens.repeat(repeated_diffusion_steps, 1, 1)
 
         # Action model forward and compute loss
         loss = self.action_model.loss(
@@ -605,9 +595,9 @@ class MemoryVLA(nn.Module):
         freeze_weights: bool = True,
         action_dim: int = 7,
         future_action_window_size: int = 15,
-        action_model_type: str = 'DiT-L',
+        action_model_type: str = "DiT-L",
         use_ema: bool = False,
-        norm_stats = None,
+        norm_stats=None,
         use_bf16: bool = False,
         **kwargs,
     ) -> MemoryVLA:
@@ -631,13 +621,11 @@ class MemoryVLA(nn.Module):
 
             model_state_dict = raw_state
         else:
-            model_state_dict = torch.load(
-                pretrained_checkpoint, map_location="cuda"
-            )["model"]
+            model_state_dict = torch.load(pretrained_checkpoint, map_location="cuda")["model"]
 
-        assert (
-            "projector" in model_state_dict and "llm_backbone" in model_state_dict
-        ), "PrismaticVLM `from_pretrained` expects checkpoint with keys for `projector` AND `llm_backbone`!"
+        assert "projector" in model_state_dict and "llm_backbone" in model_state_dict, (
+            "PrismaticVLM `from_pretrained` expects checkpoint with keys for `projector` AND `llm_backbone`!"
+        )
 
         vlm.projector.load_state_dict(model_state_dict["projector"])
         vlm.llm_backbone.load_state_dict(model_state_dict["llm_backbone"])
@@ -650,15 +638,16 @@ class MemoryVLA(nn.Module):
             vlm.eval()
 
         # Initialize
-        memory_vla = MemoryVLA(vlm,
-                        token_size = vlm.llm_backbone.llm.lm_head.in_features,
-                        action_dim = action_dim,
-                        future_action_window_size = future_action_window_size,
-                        action_model_type = action_model_type,
-                        use_ema = use_ema,
-                        norm_stats = norm_stats,
-                        **kwargs,
-                        )
+        memory_vla = MemoryVLA(
+            vlm,
+            token_size=vlm.llm_backbone.llm.lm_head.in_features,
+            action_dim=action_dim,
+            future_action_window_size=future_action_window_size,
+            action_model_type=action_model_type,
+            use_ema=use_ema,
+            norm_stats=norm_stats,
+            **kwargs,
+        )
 
         # Load ActionModel from Checkpoint
         if "action_model" in model_state_dict:
@@ -673,13 +662,13 @@ class MemoryVLA(nn.Module):
 
         # load other weights
         for key, sub_state in model_state_dict.items():
-            if key not in {"projector", "llm_backbone", "vision_backbone",
-                           "action_model", "ema_diffusion"}:
+            if key not in {"projector", "llm_backbone", "vision_backbone", "action_model", "ema_diffusion"}:
                 module = getattr(memory_vla, key, None)
                 module.load_state_dict(sub_state, strict=True)
 
         del model_state_dict
         import gc
+
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -690,14 +679,15 @@ class MemoryVLA(nn.Module):
 
     @torch.inference_mode()
     def predict_action(
-        self, image: Image, 
+        self,
+        image: Image,
         instruction: str,
-        unnorm_key: Optional[str] = None, 
-        cfg_scale: float = 1.5, 
+        unnorm_key: Optional[str] = None,
+        cfg_scale: float = 1.5,
         use_ddim: bool = False,
         num_ddim_steps: int = 10,
-        episode_first_frame: str = 'False',
-        **kwargs: str
+        episode_first_frame: str = "False",
+        **kwargs: str,
     ) -> np.ndarray:
         """
         Core function for VLA inference; maps input image and task instruction to continuous action.
@@ -746,23 +736,23 @@ class MemoryVLA(nn.Module):
                 input_ids=input_ids,                            # Shape: [1, seq]
                 pixel_values=pixel_values,                      # Shape: [1, 3, res, res] or Dict[str, ...]
                 max_new_tokens=1,
-                output_hidden_states=True, 
+                output_hidden_states=True,
                 return_dict_in_generate=True,
                 **kwargs,
             )
             # fmt: on
 
         model_dtype = next(self.action_model.net.parameters()).dtype
-        cog_tokens = output.hidden_states[-1][-1][:,-1,:]
-        assert (cog_tokens.shape[0], cog_tokens.shape[1]) == (1,4096), "Batch size must be 1 for action prediction"
+        cog_tokens = output.hidden_states[-1][-1][:, -1, :]
+        assert (cog_tokens.shape[0], cog_tokens.shape[1]) == (1, 4096), "Batch size must be 1 for action prediction"
 
         cog_tokens = cog_tokens.unsqueeze(1).to(model_dtype)  # [B, 1, D]
 
         vision_feats = self.vlm.vision_feats
         per_tokens = self.per_compr(vision_feats)
 
-        assert episode_first_frame in ['True', 'False'], "episode_first_frame must be 'True' or 'False'"
-        if episode_first_frame == 'True':
+        assert episode_first_frame in ["True", "False"], "episode_first_frame must be 'True' or 'False'"
+        if episode_first_frame == "True":
             print(" ** reset memory ** ")
             self.cog_mem_bank.reset()
             self.per_mem_bank.reset()
@@ -786,58 +776,64 @@ class MemoryVLA(nn.Module):
 
         # Sample random noise
         B = cog_tokens.shape[0]
-        noise = torch.randn(B, self.future_action_window_size+1, self.action_model.in_channels, device=cog_tokens.device).to(model_dtype)  #[B, T, D]
-    
+        noise = torch.randn(
+            B, self.future_action_window_size + 1, self.action_model.in_channels, device=cog_tokens.device
+        ).to(model_dtype)  # [B, T, D]
+
         # Setup classifier-free guidance:
         using_cfg = cfg_scale > 1.0
         if using_cfg:
             noise = torch.cat([noise, noise], 0)
             uncondition = self.action_model.net.z_embedder.uncondition
-            uncondition = uncondition.unsqueeze(0)  #[k, D]
-            uncondition = uncondition.expand(B, *uncondition.shape[1:]) #[B, k, D]
+            uncondition = uncondition.unsqueeze(0)  # [k, D]
+            uncondition = uncondition.expand(B, *uncondition.shape[1:])  # [B, k, D]
             z = torch.cat([cog_tokens, uncondition], 0)
             cfg_scale = cfg_scale
             model_kwargs = dict(z=z, cfg_scale=cfg_scale)
             sample_fn = self.action_model.net.forward_with_cfg
-            model_kwargs.update({'per_token': per_tokens.repeat(2, 1, 1)})  # Repeat for unconditioned and conditioned samples
+            model_kwargs.update(
+                {"per_token": per_tokens.repeat(2, 1, 1)}
+            )  # Repeat for unconditioned and conditioned samples
         else:
             model_kwargs = dict(z=cog_tokens)
             sample_fn = self.action_model.net.forward
-            model_kwargs.update({'per_token': per_tokens})
+            model_kwargs.update({"per_token": per_tokens})
 
         # DDIM Sampling
         if use_ddim and num_ddim_steps is not None:
             if self.action_model.ddim_diffusion is None:
                 self.action_model.create_ddim(ddim_step=num_ddim_steps)
-            samples = self.action_model.ddim_diffusion.ddim_sample_loop(sample_fn, 
-                                                                noise.shape, 
-                                                                noise, 
-                                                                clip_denoised=False,
-                                                                model_kwargs=model_kwargs,
-                                                                progress=False,
-                                                                device=cog_tokens.device,
-                                                                eta=0.0
-                                                                )
+            samples = self.action_model.ddim_diffusion.ddim_sample_loop(
+                sample_fn,
+                noise.shape,
+                noise,
+                clip_denoised=False,
+                model_kwargs=model_kwargs,
+                progress=False,
+                device=cog_tokens.device,
+                eta=0.0,
+            )
         else:
             # DDPM Sampling
-            samples = self.action_model.diffusion.p_sample_loop(sample_fn, 
-                                                                    noise.shape, 
-                                                                    noise, 
-                                                                    clip_denoised=False,
-                                                                    model_kwargs=model_kwargs,
-                                                                    progress=False,
-                                                                    device=cog_tokens.device
-                                                                    )
+            samples = self.action_model.diffusion.p_sample_loop(
+                sample_fn,
+                noise.shape,
+                noise,
+                clip_denoised=False,
+                model_kwargs=model_kwargs,
+                progress=False,
+                device=cog_tokens.device,
+            )
         if using_cfg:
             samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
         normalized_actions = samples[0].cpu().numpy()
 
-        # Un-normalize Actions        
+        # Un-normalize Actions
         action_norm_stats = self.get_action_stats(unnorm_key)
         mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
         action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
         normalized_actions = np.clip(normalized_actions, -1, 1)
-        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1) 
+        normalized_actions[:, 6] = np.where(normalized_actions[:, 6] < 0.5, 0, 1)
         actions = np.where(
             mask,
             0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low,
@@ -845,7 +841,6 @@ class MemoryVLA(nn.Module):
         )
 
         return actions, normalized_actions
-
 
     @staticmethod
     def _check_unnorm_key(norm_stats, unnorm_key):

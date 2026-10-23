@@ -70,10 +70,7 @@ def candidate_run_dirs(eval_root: str, base: str) -> list[tuple[str, str]]:
     - If eval_root is parent-shared: include only subdirs whose name starts with normalized base name.
     """
     inside = eval_root.startswith(os.path.abspath(base) + os.sep)
-    all_subdirs = [
-        d for d in os.listdir(eval_root)
-        if os.path.isdir(os.path.join(eval_root, d))
-    ]
+    all_subdirs = [d for d in os.listdir(eval_root) if os.path.isdir(os.path.join(eval_root, d))]
     if inside:
         return [(d, os.path.join(eval_root, d)) for d in sorted(all_subdirs)]
     # parent-shared: filter

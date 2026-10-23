@@ -1,16 +1,16 @@
 import math
 import os
+
 import imageio
 import numpy as np
 import tensorflow as tf
-
-from libero.libero import get_libero_path
-from libero.libero.envs import OffScreenRenderEnv
-
 from robot_utils import (
     DATE,
     DATE_TIME,
 )
+
+from libero.libero import get_libero_path
+from libero.libero.envs import OffScreenRenderEnv
 
 
 def get_libero_env(task, resolution=256):
@@ -56,9 +56,11 @@ def get_libero_image(obs, resize_size):
     return img
 
 
-def save_rollout_video(rollout_images, idx, success, task_description, log_file=None, rollout_dir='./logs/libero_videos'):
+def save_rollout_video(
+    rollout_images, idx, success, task_description, log_file=None, rollout_dir="./logs/libero_videos"
+):
     """Saves an MP4 replay of an episode."""
-    rollout_dir = os.path.join(rollout_dir, f'{DATE}')
+    rollout_dir = os.path.join(rollout_dir, f"{DATE}")
     os.makedirs(rollout_dir, exist_ok=True)
     processed_task_description = task_description.lower().replace(" ", "_").replace("\n", "_").replace(".", "_")[:50]
     task_rollout_dir = os.path.join(rollout_dir, f"{processed_task_description}")

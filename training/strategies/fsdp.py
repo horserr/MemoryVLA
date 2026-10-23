@@ -7,10 +7,10 @@ fine-grained control over wrapping policies and mixed precision per component).
 
 import math
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
 from typing import Callable, Optional, Union
-from concurrent.futures import ThreadPoolExecutor
 
 import torch
 import torch.distributed as dist
@@ -21,8 +21,8 @@ from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     checkpoint_wrapper,
 )
 from torch.distributed.fsdp import (
-    FullStateDictConfig,
     FullOptimStateDictConfig,
+    FullStateDictConfig,
     MixedPrecision,
     ShardingStrategy,
     StateDictType,
@@ -33,9 +33,8 @@ from transformers.optimization import get_constant_schedule, get_cosine_schedule
 
 from prismatic.models.vlms import PrismaticVLM
 from prismatic.overwatch import initialize_overwatch
-
-from vla import MemoryVLA
 from training.strategies.base_strategy import TrainingStrategy
+from vla import MemoryVLA
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -111,7 +110,9 @@ class FSDPStrategy(TrainingStrategy):
         assert isinstance(self.vlm, FSDP), "FSDPStrategy.save_checkpoint assumes VLM is already wrapped in FSDP!"
 
         # Summon Full State Dictionary =>> Reconstitute from Shards
-        with FSDP.state_dict_type(self.vlm, self.fsdp_state_dict_type, self.fsdp_save_policy, self.fsdp_save_optimizer_policy):
+        with FSDP.state_dict_type(
+            self.vlm, self.fsdp_state_dict_type, self.fsdp_save_policy, self.fsdp_save_optimizer_policy
+        ):
             full_vlm_state_dict = self.vlm.state_dict()
             model_state_dicts = {
                 mkey: OrderedDict() for mkey in (self.trainable_module_keys if only_trainable else self.all_module_keys)
@@ -132,7 +133,7 @@ class FSDPStrategy(TrainingStrategy):
                     checkpoint_path = (
                         checkpoint_dir / f"step-{global_step:06d}-epoch-{epoch:02d}-loss={train_loss:.4f}.pt"
                     )
-                
+
                 for key in list(model_state_dicts.keys()):
                     if key.startswith("vlm."):
                         value = model_state_dicts.pop(key)
@@ -151,7 +152,9 @@ class FSDPStrategy(TrainingStrategy):
 
     def load_optimizer_and_scheduler(self, checkpoint_path: str) -> None:
         """Load a checkpoint from the specified `checkpoint_path`."""
-        assert isinstance(self.vlm, FSDP), "FSDPStrategy.load_optimizer_and_scheduler assumes VLM is already wrapped in FSDP!"
+        assert isinstance(self.vlm, FSDP), (
+            "FSDPStrategy.load_optimizer_and_scheduler assumes VLM is already wrapped in FSDP!"
+        )
         checkpoint_path = Path(checkpoint_path)
         optimizer_path = self._get_optimizer_path(checkpoint_path)
         if not optimizer_path.exists():
@@ -159,7 +162,12 @@ class FSDPStrategy(TrainingStrategy):
             return
         # Load Checkpoint =>> Note that FSDP will automatically handle device placement!
         optim_state_dict = torch.load(optimizer_path, map_location="cpu")
-        with FSDP.state_dict_type(self.vlm, self.fsdp_state_dict_type, FullStateDictConfig(offload_to_cpu=True, rank0_only=False), FullOptimStateDictConfig(offload_to_cpu=True, rank0_only=False)):
+        with FSDP.state_dict_type(
+            self.vlm,
+            self.fsdp_state_dict_type,
+            FullStateDictConfig(offload_to_cpu=True, rank0_only=False),
+            FullOptimStateDictConfig(offload_to_cpu=True, rank0_only=False),
+        ):
             optim_state_dict = FSDP.optim_state_dict_to_load(self.vlm, self.optimizer, optim_state_dict["optimizer"])
             self.optimizer.load_state_dict(optim_state_dict)
         overwatch.info(f"Loaded optimizer state dict from {optimizer_path}")

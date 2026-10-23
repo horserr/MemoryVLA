@@ -1,20 +1,18 @@
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Optional, Union
-from tqdm import tqdm
-from collections import OrderedDict
 
 import torch
 import torch.distributed as dist
-from torch.utils.data import DataLoader, Dataset, DistributedSampler, IterableDataset
+from torch.utils.data import DataLoader, IterableDataset
+from tqdm import tqdm
 
 from prismatic.models.vlms import PrismaticVLM
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util import check_bloat16_supported
-from prismatic.util.batching_utils import SplitModalitySampler
-from prismatic.util.data_utils import PaddedCollatorForActionPrediction, PaddedCollatorForLanguageModeling
-
-from training.metrics import Metrics, VLAMetrics
+from prismatic.util.data_utils import PaddedCollatorForActionPrediction
+from training.metrics import VLAMetrics
 from vla import MemoryVLA
 
 # LLaMA EOS Token
@@ -31,6 +29,7 @@ def update_ema(ema_model, model, decay=0.9999):
     for name, param in model_params.items():
         # TODO: Consider applying only to params that require_grad to avoid small numerical changes of pos_embed
         ema_params[name].mul_(decay).add_(param.data, alpha=1 - decay)
+
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -87,9 +86,9 @@ class TrainingStrategy(ABC):
         self.optimizer, self.lr_scheduler = None, None
 
         # Lightweight Validation
-        assert (
-            self.global_batch_size % self.per_device_batch_size == 0
-        ), "Per-device batch size must evenly divide global batch size!"
+        assert self.global_batch_size % self.per_device_batch_size == 0, (
+            "Per-device batch size must evenly divide global batch size!"
+        )
         self.grad_accumulation_steps = self.global_batch_size // self.per_device_batch_size // overwatch.world_size()
         if self.enable_mixed_precision_training:
             assert self.mixed_precision_dtype == torch.bfloat16, "Only BF16 mixed precision training is supported!"
@@ -107,7 +106,7 @@ class TrainingStrategy(ABC):
 
     @abstractmethod
     def load_optimizer_and_scheduler(self, checkpoint_path: str) -> None: ...
-    
+
     @abstractmethod
     def run_setup(self, run_dir: Path, n_train_examples: int) -> None: ...
 
@@ -127,7 +126,7 @@ class TrainingStrategy(ABC):
     ) -> None:
         """Run the VLA training loop for the given `dataset` and `collator`; log losses, action metrics to `metrics`."""
         assert isinstance(vla_dataset, IterableDataset), "VLA training expects an IterableDataset!"
-        #assert self.grad_accumulation_steps == 1, "VLA training does not support gradient accumulation!"
+        # assert self.grad_accumulation_steps == 1, "VLA training does not support gradient accumulation!"
 
         # Create a DataLoader =>> Set `num_workers` to 0; RLDS loader handles parallelism!
         dataloader = DataLoader(
@@ -142,7 +141,9 @@ class TrainingStrategy(ABC):
         # === Train ===
         status = metrics.get_status()
         with tqdm(
-            total=(self.epochs * (len(dataloader) // self.grad_accumulation_steps)) if self.max_steps is None else self.max_steps,
+            total=(self.epochs * (len(dataloader) // self.grad_accumulation_steps))
+            if self.max_steps is None
+            else self.max_steps,
             desc=status,
             leave=False,
             disable=not overwatch.is_rank_zero(),
@@ -178,7 +179,7 @@ class TrainingStrategy(ABC):
                     )
                 # Commit Loss =>> Backward!
                 metrics.commit(loss=loss)
-                
+
                 normalized_loss = loss / self.grad_accumulation_steps
                 normalized_loss.backward()
 
@@ -198,7 +199,12 @@ class TrainingStrategy(ABC):
                     epoch = (metrics.global_step + 1) // (len(vla_dataset) // self.global_batch_size)
 
                     # Push Metrics
-                    metrics.commit(update_step_time=True, global_step=metrics.global_step + 1, epoch=epoch, lr=self.lr_scheduler.get_last_lr()[0])
+                    metrics.commit(
+                        update_step_time=True,
+                        global_step=metrics.global_step + 1,
+                        epoch=epoch,
+                        lr=self.lr_scheduler.get_last_lr()[0],
+                    )
                     status = metrics.push()
 
                     # Check for Save Interval or Max Steps & Save Checkpoint

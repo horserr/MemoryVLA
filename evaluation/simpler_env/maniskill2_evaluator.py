@@ -1,4 +1,5 @@
 import os
+
 import numpy as np
 from transforms3d.euler import quat2euler
 
@@ -79,7 +80,7 @@ def run_maniskill2_eval_single_episode(
         }
     obs, _ = env.reset(options=env_reset_options)
     # for long-horizon environments, we check if the current subtask is the final subtask
-    is_final_subtask = env.is_final_subtask() 
+    is_final_subtask = env.is_final_subtask()
 
     # Obtain language instruction
     if instruction is not None:
@@ -100,7 +101,7 @@ def run_maniskill2_eval_single_episode(
 
     timestep = 0
     success = "failure"
-    episode_first_frame = 'True'
+    episode_first_frame = "True"
 
     # Step the environment
     while not (predicted_terminated or truncated):
@@ -110,8 +111,8 @@ def run_maniskill2_eval_single_episode(
             task_description,
             episode_first_frame=episode_first_frame,
         )
-        
-        episode_first_frame = 'False'
+
+        episode_first_frame = "False"
         predicted_actions.append(raw_action)
         predicted_terminated = bool(action["terminate_episode"][0] > 0)
         if predicted_terminated:
@@ -124,7 +125,7 @@ def run_maniskill2_eval_single_episode(
         obs, reward, done, truncated, info = env.step(
             np.concatenate([action["world_vector"], action["rot_axangle"], action["gripper"]]),
         )
-        
+
         success = "success" if done else "failure"
         new_task_description = env.get_language_instruction()
         if new_task_description != task_description:

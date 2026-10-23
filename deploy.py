@@ -1,18 +1,18 @@
-import numpy as np
-from PIL import Image
-from typing import Optional
-import os
 import argparse
-import yaml
-from argparse import Namespace
 import math
-from flask import Flask, request, jsonify
+import os
 import tempfile
+from argparse import Namespace
+from typing import Optional
 
+import numpy as np
 import torch
+import yaml
+from flask import Flask, jsonify, request
+from PIL import Image
 
-from vla import load_vla
 from evaluation.simpler_env.adaptive_ensemble import AdaptiveEnsembler
+from vla import load_vla
 
 app = Flask(__name__)
 
@@ -24,7 +24,7 @@ class MemVLAService:
         unnorm_key: str = None,
         image_size: list[int] = [224, 224],
         cfg_scale: float = 1.5,
-        num_ddim_steps: int = 10, 
+        num_ddim_steps: int = 10,
         use_ddim: bool = True,
         use_bf16: bool = False,
         action_ensemble: bool = True,
@@ -35,7 +35,9 @@ class MemVLAService:
         args=None,
     ) -> None:
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
-        assert not (action_chunking and action_ensemble), "Now 'action_chunking' and 'action_ensemble' cannot both be True."
+        assert not (action_chunking and action_ensemble), (
+            "Now 'action_chunking' and 'action_ensemble' cannot both be True."
+        )
 
         self.unnorm_key = unnorm_key
 
@@ -43,14 +45,16 @@ class MemVLAService:
 
         kwargs = vars(args).copy()
         for k in [
-            "model_id_or_path", "saved_model_path", "pretrained_checkpoint",
+            "model_id_or_path",
+            "saved_model_path",
+            "pretrained_checkpoint",
         ]:
             kwargs.pop(k, None)
 
         self.vla = load_vla(
-          model_id_or_path=saved_model_path,
-          load_for_training=False,
-          **kwargs,
+            model_id_or_path=saved_model_path,
+            load_for_training=False,
+            **kwargs,
         )
         self.vla = self.vla.to("cuda").eval()
         if use_bf16:
@@ -86,8 +90,9 @@ class MemVLAService:
         self,
         image: str,
         task_description: str = None,
-        episode_first_frame: str = 'False',
-        *args, **kwargs,
+        episode_first_frame: str = "False",
+        *args,
+        **kwargs,
     ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         """
         Input:
@@ -99,9 +104,9 @@ class MemVLAService:
 
         """
 
-        assert episode_first_frame in ['True', 'False']
+        assert episode_first_frame in ["True", "False"]
 
-        if episode_first_frame == 'True':
+        if episode_first_frame == "True":
             self.reset()
 
         image: Image.Image = Image.open(image)
@@ -114,11 +119,11 @@ class MemVLAService:
         # save resized image for debugging
         resized_image.save("resized_image.png")
         unnormed_actions, normalized_actions = self.vla.predict_action(
-            image=resized_image, 
+            image=resized_image,
             instruction=task_description,
             unnorm_key=self.unnorm_key,
-            cfg_scale=self.cfg_scale, 
-            use_ddim=self.use_ddim, 
+            cfg_scale=self.cfg_scale,
+            use_ddim=self.use_ddim,
             num_ddim_steps=self.num_ddim_steps,
             episode_first_frame=episode_first_frame,
         )
@@ -150,24 +155,25 @@ class MemVLAService:
         return action
 
 
-# [IMPORTANT!]: Please modify the image processing code here to ensure that the input images  
+# [IMPORTANT!]: Please modify the image processing code here to ensure that the input images
 # are handled in exactly the same way as during the finetuning phase.
 # Make sure, as much as possible, that the gripper is visible in the processed images.
 def resize_image(image: Image, size=(224, 224), shift_to_left=0):
     w, h = image.size
-    #assert h < w, "Height should be less than width"
+    # assert h < w, "Height should be less than width"
     left_margin = (w - h) // 2 - shift_to_left
     left_margin = min(max(left_margin, 0), w - h)
     image = image.crop((left_margin, 0, left_margin + h, h))
 
     image = image.resize(size, resample=Image.LANCZOS)
-    
+
     image = scale_and_resize(image, target_size=(224, 224), scale=0.9, margin_w_ratio=0.5, margin_h_ratio=0.5)
     return image
 
-# Here the image is first center cropped and then resized back to its original size 
+
+# Here the image is first center cropped and then resized back to its original size
 # because random crop data augmentation was used during finetuning.
-def scale_and_resize(image : Image, target_size=(224, 224), scale=0.9, margin_w_ratio=0.5, margin_h_ratio=0.5):
+def scale_and_resize(image: Image, target_size=(224, 224), scale=0.9, margin_w_ratio=0.5, margin_h_ratio=0.5):
     w, h = image.size
     new_w = int(w * math.sqrt(scale))
     new_h = int(h * math.sqrt(scale))
@@ -182,7 +188,7 @@ def scale_and_resize(image : Image, target_size=(224, 224), scale=0.9, margin_w_
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--saved_model_path", type=str, default="")
-parser.add_argument("--unnorm_key", type=str, default='custom_finetuning')
+parser.add_argument("--unnorm_key", type=str, default="custom_finetuning")
 parser.add_argument("--image_size", type=list[int], default=[224, 224])
 parser.add_argument("--cfg_scale", type=float, default=1.5)
 parser.add_argument("--port", type=int, default=2345)
@@ -198,6 +204,7 @@ args = parser.parse_args()
 with open(os.path.join(os.path.dirname(os.path.dirname(args.saved_model_path)), "config.yaml"), "r") as f:
     yaml_args = yaml.safe_load(f) or {}
 
+
 def deep_update(base: dict, updates: dict):
     """Recursively merge two dictionaries, with updates taking precedence but preserving keys from base."""
     for k, v in updates.items():
@@ -206,6 +213,7 @@ def deep_update(base: dict, updates: dict):
         else:
             base[k] = v
     return base
+
 
 cli_args = vars(args)
 merged_args = deep_update(yaml_args.copy(), cli_args)
@@ -227,22 +235,22 @@ inferencer = MemVLAService(
 )
 
 
-@app.route('/process_frame', methods=['POST'])
+@app.route("/process_frame", methods=["POST"])
 def inference():
     # Check if image is provided
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image provided'}), 400
-    image = request.files['image']
+    if "image" not in request.files:
+        return jsonify({"error": "No image provided"}), 400
+    image = request.files["image"]
 
     # Check if text is provided
-    if 'text' not in request.form:
-        return jsonify({'error': 'No text provided'}), 400
-    query = request.form['text']
+    if "text" not in request.form:
+        return jsonify({"error": "No text provided"}), 400
+    query = request.form["text"]
 
     # Check if episode_first_frame is provided
-    if 'episode_first_frame' not in request.form:
-        return jsonify({'error': 'No episode_first_frame provided'}), 400
-    episode_first_frame = request.form['episode_first_frame']
+    if "episode_first_frame" not in request.form:
+        return jsonify({"error": "No episode_first_frame provided"}), 400
+    episode_first_frame = request.form["episode_first_frame"]
 
     # Save image to temporary file and resize to expected dimensions
     with tempfile.NamedTemporaryFile(delete=False) as temp_image:
@@ -251,8 +259,8 @@ def inference():
 
     # Construct input query and prepare for inference
     input_query = {
-        'task_description': query,
-        'episode_first_frame': episode_first_frame,
+        "task_description": query,
+        "episode_first_frame": episode_first_frame,
     }
 
     # Run inference
@@ -262,15 +270,16 @@ def inference():
     # Convert action array to string based on different modes
     if inferencer.action_ensemble:
         # For action ensemble mode, directly convert the action list
-        action_str = ' '.join([str(x) for x in answer])
+        action_str = " ".join([str(x) for x in answer])
     elif inferencer.action_chunking:
         # For action chunking mode, convert the chunked actions
-        action_str = ';'.join([' '.join([str(x) for x in chunk]) for chunk in answer])
+        action_str = ";".join([" ".join([str(x) for x in chunk]) for chunk in answer])
     else:
         # For single action mode
-        action_str = ' '.join([str(x) for x in answer])
+        action_str = " ".join([str(x) for x in answer])
 
-    return jsonify({'response': action_str})
+    return jsonify({"response": action_str})
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=False, port=args.port)
